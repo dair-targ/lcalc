@@ -4,7 +4,7 @@ __version__ = '1.0'
 
 
 setup(
-    name='picalc',
+    name='lcalc',
     version=__version__,
     packages=['lcalc'],
     url='https://github.com/dair-targ/lcalc',
