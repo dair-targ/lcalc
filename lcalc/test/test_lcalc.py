@@ -216,3 +216,76 @@ class ChurchEncoding(unittest.TestCase):
                 'Error for %d: %s != %s' % (t, expected, actual)
             )
             x = lcalc.evaluate(lcalc.App(SUCC, x))
+
+
+class ProgramTest(unittest.TestCase):
+    def test2(self):
+        x = lcalc.try_parse(source='''
+        succ = λx.x;
+        succ 0
+        ''')
+        a = lcalc.evaluate(x)
+        self.assertEquals(lcalc.evaluate(lcalc.parse('0')), a)
+
+    def test_order_insignificance(self):
+        a = lcalc.try_parse(source='''
+        (λzero.
+        (λsucc.
+          succ zero
+        ) λn.λf.λx.f (n f x)
+        ) λf.λx.x
+        ''')
+
+        b = lcalc.try_parse(source='''
+        succ = λn.λf.λx.f (n f x);
+        zero = λf.λx.x;
+        succ zero
+        ''')
+        self.assertEquals(
+            lcalc.evaluate(a),
+            lcalc.evaluate(b),
+        )
+
+    def test_boolean(self):
+        a = lcalc.evaluate(lcalc.parse(source='''
+        TRUE = λx.λy.x;
+        FALSE = λx.λy.x;
+        AND = λp.λq.p q p;
+        OR = λp.λq.p p q;
+        NOT = λp.p FALSE TRUE;
+        IFTHENELSE = λp.λa.λb.p a b;
+        
+        AND TRUE FALSE
+        '''))
+        self.assertEqual(
+            a,
+            lcalc.parse('λx.λy.x')
+        )
+
+    def test_numbers(self):
+        a = lcalc.evaluate(lcalc.parse(source='''
+        SUCC = λn.λf.λx.f (n f x);
+        SUCC 1
+        '''))
+        self.assertEqual(
+            a,
+            lcalc.evaluate(lcalc.parse('2'))
+        )
+
+    @unittest.skip('takes 50 seconds to complete')
+    def test_recursion(self):
+        a = lcalc.evaluate(lcalc.parse(source='''
+        PRED = λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u);
+        SUB = λm.λn.n PRED m;
+        SUCC = λn.λf.λx.f (n f x);
+        PLUS = λm.λn.m SUCC n;
+        MULT = λm.λn.m (PLUS n) 0;
+        FALSE = λx.λy.y;
+        TRUE = λx.λy.x;
+        ISZERO = λn.n (λx.FALSE) TRUE;
+        IFTHENELSE = λp.λa.λb.p a b;
+        G = λn.IFTHENELSE (ISZERO n) 0 (PLUS n (G (SUB n 1)));
+        
+        G 2
+        '''))
+        self.assertEqual(lcalc.evaluate(lcalc.parse('3')), a)

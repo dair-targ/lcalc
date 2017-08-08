@@ -6,7 +6,7 @@ import functools
 
 
 LOGGER = logging.getLogger('lcalc')
-
+LOGGER.setLevel(logging.INFO)
 
 def log(fn):
     log_result = lambda self, args, kwargs, result: LOGGER.debug('%s --%s.%s(%s)--> %s' % (
@@ -80,6 +80,38 @@ class Def(object):
         raise NotImplementedError(self.__class__.__name__)
 
 
+class FreeVal(Def):
+    def __init__(self, namespace, name):
+        """
+        :type namespace: Namespace
+        :type name: str
+        """
+        super(FreeVal, self).__init__()
+        self._namespace = namespace
+        self._name = name
+
+    def __str__(self):
+        return '{free}%s' % self._name
+
+    def __eq__(self, other):
+        return isinstance(other, FreeVal) and self._name == other._name
+
+    @log
+    def shift(self, d, c=0):
+        return self
+
+    @log
+    def substitute(self, expr, j=0):
+        return self
+
+    @log
+    def beta(self):
+        if self._name.isdigit():
+            return church_numerals[int(self._name)]
+        else:
+            return self._namespace[self._name].expr
+
+
 class Val(Def):
     def __init__(self, name, index):
         """
@@ -107,6 +139,7 @@ class Val(Def):
 
     @log
     def beta(self):
+        # Substitute with another definition
         return self
 
 
@@ -193,113 +226,196 @@ class App(Def):
             )
 
 
-def parse(source):
-    """
-    :rtype: Def
-    """
-    white = parsec.one_of(' \t\n').desc('white')
-    whites = parsec.many(white).desc('whites')
+class Statement(object):
+    def __init__(self, name, expr):
+        """
+        :type name: str
+        :type expr: Def
+        """
+        self._name = name
+        self._expr = expr
 
-    optional = lambda p: parsec.times(p, 0, 1)
+    @property
+    def name(self):
+        return self._name
 
-    @parsec.generate
-    def comment():
-        yield optional(whites)
-        opened = yield optional(parsec.string('{'))
-        if opened:
-            yield parsec.many(parsec.none_of('}'))
-            body = yield parsec.string('}')
-            yield whites
-            return body
+    @property
+    def expr(self):
+        return self._expr
 
-    @parsec.generate
-    def identifier():
-        yield comment
-        first = yield parsec.one_of(string.ascii_letters + '_')
-        rest = yield parsec.many(parsec.one_of(string.ascii_letters + '_' + string.digits))
-        yield comment
-        return first + ''.join(rest)
 
-    def parens(subparser):
+class Namespace(object):
+    def __init__(self):
+        self._statements = {}
+
+    def __getitem__(self, name):
+        if name not in self._statements:
+            raise Exception('"%s" is not defined. Defined names are:\n%s' % (name, ''.join('- %s\n' % n for n in self._statements)))
+        return self._statements[name]
+
+    def add_statement(self, statement:Statement):
+        if statement.name in self._statements:
+            raise Exception()
+        else:
+            self._statements[statement.name] = statement
+
+
+class Parser(object):
+    def __init__(self):
+        self._namespace = Namespace()
+
+    def __call__(self, source):
+        return self.p_program().parse(source)
+
+    def white(self):
+        @parsec.generate
+        def parser():
+            yield parsec.one_of(' \t\n').desc('white')
+        return parser
+
+    def whites(self):
+        @parsec.generate
+        def parser():
+            yield parsec.many(self.white()).desc('whites')
+        return parser
+
+    def optional(self, p):
+        return parsec.times(p, 0, 1)
+
+    def comment(self):
+        @parsec.generate
+        def parser():
+            yield self.optional(self.whites())
+            opened = yield self.optional(parsec.string('{'))
+            if opened:
+                yield parsec.many(parsec.none_of('}'))
+                body = yield parsec.string('}')
+                yield self.whites()
+                return body
+        return parser
+
+    def identifier(self):
+        @parsec.generate
+        def parser():
+            yield self.comment()
+            first = yield parsec.one_of(string.ascii_letters + '_' + string.digits)
+            rest = yield parsec.many(parsec.one_of(string.ascii_letters + '_' + string.digits))
+            yield self.comment()
+            return first + ''.join(rest)
+        return parser
+
+    def parens(self, subparser):
         @parsec.generate
         def parser():
             yield parsec.string('(')
             val = yield subparser
             yield parsec.string(')')
             return val
+
         return parser
 
-    def p_val(abss):
+    def p_val(self, abss):
         @parsec.generate
         def parser():
-            name = yield identifier
+            name = yield self.identifier()
             for index, abs in enumerate(abss[::-1]):
                 if abs == name:
                     return Val(name, index)
             else:
-                raise Exception('Free value: %s' % name)
-                #return FreeVal(name)
+                return FreeVal(self._namespace, name)
         return parser
 
-    def p_abs(abss):
+    def p_abs(self, abss):
         @parsec.generate
         def parser():
             yield parsec.try_choice(parsec.string('λ'), parsec.string('\\'))
-            name = yield identifier
+            name = yield self.identifier()
             yield parsec.string('.')
-            body = yield p_expr(abss + [name])
+            body = yield self.p_expr(abss + [name])
             return Abs(name, body)
         return parser
 
-    def p_non_app(abss):
+    def p_non_app(self, abss):
         @parsec.generate
         def parser():
-            yield comment
+            yield self.comment()
             expr = yield parsec.try_choice(
-                parens(p_expr(abss)),
+                self.parens(self.p_expr(abss)),
                 parsec.try_choice(
-                    p_abs(abss),
-                    p_val(abss)
+                    self.p_abs(abss),
+                    self.p_val(abss)
                 )
             )
-            yield comment
+            yield self.comment()
             return expr
+
         return parser
 
-    def p_app(abss):
+    def p_app(self, abss):
         @parsec.generate
         def parser():
-            term = yield p_non_app(abss)
+            term = yield self.p_non_app(abss)
             while True:
-                next_term = yield parsec.try_choice(p_non_app(abss), parsec.string(''))
+                next_term = yield parsec.try_choice(
+                    self.p_non_app(abss),
+                    parsec.string(''),
+                )
                 if next_term is '':
                     break
                 term = App(term, next_term)
             return term
+
         return parser
 
-    def p_expr(abss):
+    def p_expr(self, abss):
         @parsec.generate
         def parser():
-            yield comment
+            yield self.comment()
             expr = yield parsec.try_choice(
-                p_abs(abss),
+                self.p_abs(abss),
                 parsec.try_choice(
-                    p_app(abss),
-                    p_val(abss)
+                    self.p_app(abss),
+                    self.p_val(abss)
                 )
             )
-            yield comment
+            yield self.comment()
             return expr
+
+        return parser
+
+    def p_statement(self):
+        @parsec.generate
+        def parser():
+            name = yield self.identifier()
+            yield parsec.string('=')
+            expr = yield self.p_expr([])
+            yield parsec.string(';')
+            return Statement(name, expr)
+        return parser
+
+    def p_program(self):
+        @parsec.generate
+        def parser():
+            statements = yield parsec.many(self.p_statement())
+            for statement in statements:
+                self._namespace.add_statement(statement)
+            main_expr = yield self.p_expr([])
+            return main_expr
+
         return parser
 
     @parsec.generate
-    def parser():
-        expr = yield p_expr([])
+    def parser(self):
+        expr = yield self.p_program()
         yield parsec.eof()
         return expr
 
-    return parser.parse(source)
+
+def parse(source):
+    """
+    :rtype: Def
+    """
+    return Parser()(source)
 
 
 def try_parse(source):
