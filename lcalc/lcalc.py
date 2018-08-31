@@ -90,9 +90,6 @@ class AbsoluteIdentifier(Identifier):
 
 
 class Def(object):
-    def __init__(self):
-        pass
-
     def __str__(self):
         raise NotImplementedError()
 
@@ -147,22 +144,44 @@ class Def(object):
         raise NotImplementedError(self.__class__.__name__)
 
 
-class FreeVal(Def):
-    def __init__(self, identifier: Identifier):
-        super(FreeVal, self).__init__()
-        self._identifier = identifier
+class GlobalRef(Def):
+    def __init__(self, absolute_identifier: AbsoluteIdentifier):
+        self._absolute_identifier = absolute_identifier
 
     def __str__(self):
-        return '{free}%s' % self._identifier
+        return '{absref}%s' % self._absolute_identifier
 
     def __eq__(self, other):
-        return isinstance(other, FreeVal) and self._identifier == other._identifier
+        return isinstance(other, self.__class__) and self._absolute_identifier == other._absolute_identifier
 
     def link(self, namespace_identifier: NamespaceIdentifier):
-        if isinstance(self._identifier, RelativeIdentifier):
-            return FreeVal(AbsoluteIdentifier(namespace_identifier, self._identifier))
-        else:
-            return self
+        return self
+
+    @log
+    def shift(self, d, c=0):
+        return self
+
+    @log
+    def substitute(self, expr, j=0):
+        return self
+
+    @log
+    def beta(self, context) -> Def:
+        return context.get_def(self._absolute_identifier)
+
+
+class LocalRef(Def):
+    def __init__(self, relative_identifier: RelativeIdentifier):
+        self._relative_identifier = relative_identifier
+
+    def __str__(self):
+        return '{locref}%s' % self._relative_identifier
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self._relative_identifier == other._relative_identifier
+
+    def link(self, namespace_identifier: NamespaceIdentifier):
+        return GlobalRef(AbsoluteIdentifier(namespace_identifier, self._relative_identifier))
 
     @log
     def shift(self, d, c=0):
@@ -174,12 +193,11 @@ class FreeVal(Def):
 
     @log
     def beta(self, context):
-        return context.get_def(self._identifier.namespace_identifier, self._identifier)
+        return self
 
 
 class Val(Def):
     def __init__(self, identifier: Identifier, index: int):
-        super(Val, self).__init__()
         assert index >= 0
         self._identifier = identifier
         self._index = index
@@ -209,7 +227,6 @@ class Val(Def):
 class Abs(Def):
     """Abstraction"""
     def __init__(self, identifier: RelativeIdentifier, body: Def):
-        super(Abs, self).__init__()
         self._identifier: RelativeIdentifier = identifier
         self._body = body
 
@@ -423,7 +440,10 @@ class Parser(object):
                 if abs == identifier:
                     return Val(identifier, index)
             else:
-                return FreeVal(identifier)
+                if isinstance(identifier, AbsoluteIdentifier):
+                    return GlobalRef(identifier)
+                else:
+                    return LocalRef(identifier)
         return parser
 
     def p_abs(self, abss):
@@ -543,22 +563,16 @@ class Context(object):
         else:
             raise Exception('No such namespace: %s' % namespace_identifier)
 
-    def get_def(self, namespace_identifier: NamespaceIdentifier, identifier: Identifier) -> Def:
-        if isinstance(identifier, AbsoluteIdentifier):
-            namespace = self.get_namespace(identifier.namespace_identifier)
-            relative_identifier: RelativeIdentifier = identifier.relative_identifier
-        elif isinstance(identifier, RelativeIdentifier):
-            namespace = self.get_namespace(namespace_identifier)
-            relative_identifier: RelativeIdentifier = identifier
-        else:
-            raise Exception()
+    def get_def(self, absolute_identifier: AbsoluteIdentifier) -> Def:
+        namespace = self.get_namespace(absolute_identifier.namespace_identifier)
+        relative_identifier: RelativeIdentifier = absolute_identifier.relative_identifier
         if relative_identifier._value.isdigit():
             return church_numerals[int(relative_identifier._value)]
         return namespace.get_def(relative_identifier)
 
     def eval(self, absolute_identifier: AbsoluteIdentifier=AbsoluteIdentifier(NamespaceIdentifier('main'), RelativeIdentifier('main'))):
-        expr = self.get_def(absolute_identifier.namespace_identifier, absolute_identifier)
-        old = None
+        expr = self.get_def(absolute_identifier)
+        old: typing.Optional[Def] = None
         step = 0
         LOGGER.debug('Given: %s' % expr)
         while expr != old:
