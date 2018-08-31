@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import typing
+
 import parsec
 import string
 import logging
@@ -8,14 +10,17 @@ import functools
 LOGGER = logging.getLogger('lcalc')
 LOGGER.setLevel(logging.INFO)
 
+
 def log(fn):
-    log_result = lambda self, args, kwargs, result: LOGGER.debug('%s --%s.%s(%s)--> %s' % (
-        self,
-        self.__class__.__name__,
-        fn.__name__,
-        ','.join(map(str, list(args) + ['%s=%s' % (k, v) for k, v in kwargs.items()])),
-        result
-    ))
+    def log_result(self, args, kwargs, result):
+        LOGGER.debug('%s --%s.%s(%s)--> %s' % (
+            self,
+            self.__class__.__name__,
+            fn.__name__,
+            ','.join(map(str, list(args) + ['%s=%s' % (k, v) for k, v in kwargs.items()])),
+            result
+        ))
+
     @functools.wraps(fn)
     def wrapper(self, *args, **kwargs):
         log_result(self, args, kwargs, '...')
@@ -23,6 +28,63 @@ def log(fn):
         log_result(self, args, kwargs, result)
         return result
     return wrapper
+
+
+class Identifier(object):
+    pass
+
+
+class RelativeIdentifier(Identifier):
+    def __init__(self, value: str):
+        self._value = value
+
+    def __str__(self):
+        return self._value
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self._value == other._value
+
+    def __hash__(self):
+        return hash(self._value)
+
+
+class NamespaceIdentifier(Identifier):
+    def __init__(self, value: str):
+        self._value = value
+
+    def __str__(self):
+        return self._value
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self._value == other._value
+
+    def __hash__(self):
+        return hash(self._value)
+
+
+class AbsoluteIdentifier(Identifier):
+    def __init__(self, namespace_identifier: NamespaceIdentifier, relative_identifier: RelativeIdentifier):
+        self._namespace_identifier = namespace_identifier
+        self._relative_identifier = relative_identifier
+
+    def __str__(self):
+        return '%s/%s' % (repr(self._namespace_identifier), repr(self._relative_identifier))
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+        return self._namespace_identifier == other._namespace_identifier and self._relative_identifier == other._namespace_identifier
+
+    def __hash__(self):
+        return hash((self._namespace_identifier, self._relative_identifier))
+
+    @property
+    def namespace_identifier(self) -> NamespaceIdentifier:
+        return self._namespace_identifier
+
+    @property
+    def relative_identifier(self) -> RelativeIdentifier:
+        return self._relative_identifier
 
 
 class Def(object):
@@ -37,6 +99,9 @@ class Def(object):
 
     def __eq__(self, other):
         raise NotImplementedError()
+
+    def link(self, namespace_identifier: NamespaceIdentifier):
+        raise NotImplementedError(self.__class__.__name__)
 
     def shift(self, d, c=0):
         """
@@ -64,7 +129,7 @@ class Def(object):
         """
         raise NotImplementedError(self.__class__.__name__)
 
-    def beta(self):
+    def beta(self, context):
         """
         :rtype: Def
         """
@@ -81,20 +146,21 @@ class Def(object):
 
 
 class FreeVal(Def):
-    def __init__(self, namespace, name):
-        """
-        :type namespace: Namespace
-        :type name: str
-        """
+    def __init__(self, identifier: Identifier):
         super(FreeVal, self).__init__()
-        self._namespace = namespace
-        self._name = name
+        self._identifier = identifier
 
     def __str__(self):
-        return '{free}%s' % self._name
+        return '{free}%s' % self._identifier
 
     def __eq__(self, other):
-        return isinstance(other, FreeVal) and self._name == other._name
+        return isinstance(other, FreeVal) and self._identifier == other._identifier
+
+    def link(self, namespace_identifier: NamespaceIdentifier):
+        if isinstance(self._identifier, RelativeIdentifier):
+            return FreeVal(AbsoluteIdentifier(namespace_identifier, self._identifier))
+        else:
+            return self
 
     @log
     def shift(self, d, c=0):
@@ -105,69 +171,63 @@ class FreeVal(Def):
         return self
 
     @log
-    def beta(self):
-        if self._name.isdigit():
-            return church_numerals[int(self._name)]
-        else:
-            return self._namespace[self._name].expr
+    def beta(self, context):
+        return context.get_def(self._identifier.namespace_identifier, self._identifier)
 
 
 class Val(Def):
-    def __init__(self, name, index):
-        """
-        :type name: str
-        :type index: int
-        """
+    def __init__(self, identifier: Identifier, index: int):
         super(Val, self).__init__()
         assert index >= 0
-        self._name = name
+        self._identifier = identifier
         self._index = index
 
     def __str__(self):
-        return '{<-%d}%s' % (self._index, self._name)
+        return '{<-%d}%s' % (self._index, self._identifier)
 
     def __eq__(self, other):
         return isinstance(other, Val) and self._index == other._index
 
+    def link(self, namespace_identifier: NamespaceIdentifier,):
+        return self
+
     @log
     def shift(self, d, c=0):
-        return Val(self._name, self._index + d) if self._index >= c else self
+        return Val(self._identifier, self._index + d) if self._index >= c else self
 
     @log
     def substitute(self, expr, j=0):
         return expr if self._index == j else self
 
     @log
-    def beta(self):
-        # Substitute with another definition
+    def beta(self, context):
         return self
 
 
 class Abs(Def):
     """Abstraction"""
-    def __init__(self, name, body):
-        """
-        :type name: str
-        :type body: Def
-        """
+    def __init__(self, identifier: RelativeIdentifier, body: Def):
         super(Abs, self).__init__()
-        self._name = name
+        self._identifier: RelativeIdentifier = identifier
         self._body = body
 
     def __str__(self):
-        return u'λ%s.%s' % (self._name, self._body)
+        return u'λ%s.%s' % (self._identifier, self._body)
 
     def __eq__(self, other):
         return isinstance(other, Abs) and self._body == other._body
 
+    def link(self, namespace_identifier):
+        return Abs(self._identifier, self._body.link(namespace_identifier))
+
     @log
     def shift(self, d, c=0):
-        return Abs(self._name, self._body.shift(d, c + 1))
+        return Abs(self._identifier, self._body.shift(d, c + 1))
 
     @log
     def substitute(self, expr, j=0):
         return Abs(
-            self._name,
+            self._identifier,
             self._body.substitute(
                 expr.shift(1),
                 j + 1
@@ -175,8 +235,8 @@ class Abs(Def):
         )
 
     @log
-    def beta(self):
-        return Abs(self._name, self._body.beta())
+    def beta(self, context):
+        return Abs(self._identifier, self._body.beta(context))
 
 
 class App(Def):
@@ -202,6 +262,12 @@ class App(Def):
     def __eq__(self, other):
         return isinstance(other, App) and self._m == other._m and self._n == other._n
 
+    def link(self, namespace_identifier):
+        return App(
+            self._m.link(namespace_identifier),
+            self._n.link(namespace_identifier),
+        )
+
     @log
     def shift(self, d, c=0):
         return App(self._m.shift(d, c), self._n.shift(d, c))
@@ -214,59 +280,68 @@ class App(Def):
         )
 
     @log
-    def beta(self):
+    def beta(self, context):
         if isinstance(self._m, Abs):
             return self._m._body.substitute(
                 expr=self._n.shift(1)
             ).shift(-1)
         else:
             return App(
-                self._m.beta(),
-                self._n.beta()
+                self._m.beta(context),
+                self._n.beta(context)
             )
 
 
 class Statement(object):
-    def __init__(self, name, expr):
-        """
-        :type name: str
-        :type expr: Def
-        """
-        self._name = name
+    def __init__(self, relative_identifier: RelativeIdentifier, expr: Def):
+        assert isinstance(relative_identifier, RelativeIdentifier)
+        self._relative_identifier = relative_identifier
         self._expr = expr
 
     @property
-    def name(self):
-        return self._name
+    def relative_identifier(self) -> RelativeIdentifier:
+        return self._relative_identifier
 
     @property
-    def expr(self):
+    def expr(self) -> Def:
         return self._expr
 
 
+class ImportStatement(object):
+    def __init__(self, identifier: NamespaceIdentifier):
+        self._identifier = identifier
+
+    @property
+    def identifier(self):
+        return self._identifier
+
+
 class Namespace(object):
-    def __init__(self):
-        self._statements = {}
+    def __init__(self, import_statements: typing.List[ImportStatement], statements: typing.List[Statement]):
+        self._import_statements = import_statements
+        self._exprs: typing.Dict[RelativeIdentifier, Def] = {
+            statement.relative_identifier: statement.expr
+            for statement in statements
+        }
 
-    def __getitem__(self, name):
-        if name not in self._statements:
-            raise Exception('"%s" is not defined. Defined names are:\n%s' % (name, ''.join('- %s\n' % n for n in self._statements)))
-        return self._statements[name]
+    def link(self, namespace_identifier: NamespaceIdentifier):
+        for identifier in self._exprs.keys():
+            self._exprs[identifier] = self._exprs[identifier].link(namespace_identifier)
 
-    def add_statement(self, statement:Statement):
-        if statement.name in self._statements:
-            raise Exception()
-        else:
-            self._statements[statement.name] = statement
+    def get_def(self, relative_identifier: RelativeIdentifier) -> Def:
+        if relative_identifier not in self._exprs:
+            raise Exception('"%s" is not defined. Defined identifiers are:\n%s' % (
+                relative_identifier,
+                ''.join('  %s\n' % n for n in self._exprs),
+            ))
+        return self._exprs[relative_identifier]
+
+    @property
+    def import_statements(self):
+        return self._import_statements
 
 
 class Parser(object):
-    def __init__(self):
-        self._namespace = Namespace()
-
-    def __call__(self, source):
-        return self.p_program().parse(source)
-
     def white(self):
         @parsec.generate
         def parser():
@@ -294,14 +369,38 @@ class Parser(object):
                 return body
         return parser
 
-    def identifier(self):
+    def eof(self):
         @parsec.generate
         def parser():
             yield self.comment()
-            first = yield parsec.one_of(string.ascii_letters + '_' + string.digits)
-            rest = yield parsec.many(parsec.one_of(string.ascii_letters + '_' + string.digits))
+            yield parsec.eof()
+        return parser
+
+    def namespace_identifier(self):
+        @parsec.generate
+        def parser():
             yield self.comment()
-            return first + ''.join(rest)
+            rest = yield parsec.many1(parsec.one_of(string.ascii_letters + '_' + string.digits))
+            yield self.comment()
+            return NamespaceIdentifier(''.join(rest))
+        return parser
+
+    def relative_identifier(self):
+        @parsec.generate
+        def parser():
+            yield self.comment()
+            rest = yield parsec.many1(parsec.one_of(string.ascii_letters + '_' + string.digits))
+            yield self.comment()
+            return RelativeIdentifier(''.join(rest))
+        return parser
+
+    def absolute_identifier(self) -> Identifier:
+        @parsec.generate
+        def parser():
+            namespace_identifier = yield self.namespace_identifier()
+            yield parsec.string('/')
+            relative_identifier = yield self.relative_identifier()
+            return AbsoluteIdentifier(namespace_identifier, relative_identifier)
         return parser
 
     def parens(self, subparser):
@@ -316,23 +415,23 @@ class Parser(object):
 
     def p_val(self, abss):
         @parsec.generate
-        def parser():
-            name = yield self.identifier()
+        def parser() -> Val:
+            identifier = yield parsec.try_choice(self.absolute_identifier(), self.relative_identifier())
             for index, abs in enumerate(abss[::-1]):
-                if abs == name:
-                    return Val(name, index)
+                if abs == identifier:
+                    return Val(identifier, index)
             else:
-                return FreeVal(self._namespace, name)
+                return FreeVal(identifier)
         return parser
 
     def p_abs(self, abss):
         @parsec.generate
-        def parser():
+        def parser() -> Abs:
             yield parsec.try_choice(parsec.string('λ'), parsec.string('\\'))
-            name = yield self.identifier()
+            identifier = yield self.relative_identifier()
             yield parsec.string('.')
-            body = yield self.p_expr(abss + [name])
-            return Abs(name, body)
+            body = yield self.p_expr(abss + [identifier])
+            return Abs(identifier, body)
         return parser
 
     def p_non_app(self, abss):
@@ -386,77 +485,129 @@ class Parser(object):
     def p_statement(self):
         @parsec.generate
         def parser():
-            name = yield self.identifier()
+            identifier = yield self.relative_identifier()
             yield parsec.string('=')
             expr = yield self.p_expr([])
             yield parsec.string(';')
-            return Statement(name, expr)
+            return Statement(identifier, expr)
         return parser
 
-    def p_program(self):
+    def p_import_statement(self):
         @parsec.generate
         def parser():
-            statements = yield parsec.many(self.p_statement())
-            for statement in statements:
-                self._namespace.add_statement(statement)
-            main_expr = yield self.p_expr([])
-            return main_expr
-
+            yield self.optional(self.whites())
+            yield parsec.string('import')
+            yield self.optional(self.whites())
+            identifier = yield self.namespace_identifier()
+            yield self.optional(self.whites())
+            yield parsec.string(';')
+            yield self.optional(self.whites())
+            return ImportStatement(identifier)
         return parser
 
-    @parsec.generate
-    def parser(self):
-        expr = yield self.p_program()
-        yield parsec.eof()
+    def p_namespace(self):
+        @parsec.generate
+        def parser():
+            import_statements = yield parsec.many(self.p_import_statement())
+            statements = yield parsec.many(self.p_statement())
+            yield self.eof()
+            return Namespace(import_statements, statements)
+        return parser
+
+
+def parse_def(source: str) -> Def:
+    """
+    Parses a single Def
+    """
+    return Parser().p_expr([]).parse(source)
+
+
+def parse_namespace(source: str) -> Namespace:
+    return Parser().p_namespace().parse(source)
+
+
+class Context(object):
+    def __init__(self, namespaces: typing.Dict[NamespaceIdentifier, Namespace]):
+        self._namespaces = namespaces
+        self.link()
+
+    def link(self):
+        for namespace_name, namespace in self._namespaces.items():
+            namespace.link(namespace_name)
+
+    def get_namespace(self, namespace_identifier: NamespaceIdentifier):
+        if namespace_identifier in self._namespaces:
+            return self._namespaces[namespace_identifier]
+        else:
+            raise Exception('No such namespace: %s' % namespace_identifier)
+
+    def get_def(self, namespace_identifier: NamespaceIdentifier, identifier: Identifier) -> Def:
+        if isinstance(identifier, AbsoluteIdentifier):
+            namespace = self.get_namespace(identifier.namespace_identifier)
+            relative_identifier: RelativeIdentifier = identifier.relative_identifier
+        elif isinstance(identifier, RelativeIdentifier):
+            namespace = self.get_namespace(namespace_identifier)
+            relative_identifier: RelativeIdentifier = identifier
+        else:
+            raise Exception()
+        if relative_identifier._value.isdigit():
+            return church_numerals[int(relative_identifier._value)]
+        return namespace.get_def(relative_identifier)
+
+    def eval(self, absolute_identifier: AbsoluteIdentifier=AbsoluteIdentifier(NamespaceIdentifier('main'), RelativeIdentifier('main'))):
+        expr = self.get_def(absolute_identifier.namespace_identifier, absolute_identifier)
+        old = None
+        step = 0
+        LOGGER.info('Given: %s' % expr)
+        while expr != old:
+            old = expr
+            expr = expr.beta(self)
+            LOGGER.info('Step %d, beta -> %s' % (step, expr))
+            step += 1
+        LOGGER.info('Result: %s' % expr)
         return expr
 
 
-def parse(source):
-    """
-    :rtype: Def
-    """
-    return Parser()(source)
+class DictContext(Context):
+    def __init__(self, sources: typing.Optional[typing.Dict[str, str]]=None):
+        super(DictContext, self).__init__({
+            NamespaceIdentifier(namespace_name): parse_namespace(namespace_source)
+            for namespace_name, namespace_source in sources.items()
+        } if sources is not None else {})
 
 
-def try_parse(source):
-    """
-    :rtype: Def | None
-    """
-    try:
-        return parse(source)
-    except parsec.ParseError as pe:
-        line, col = parsec.ParseError.loc_info(source, pe.index)
-        print(pe)
-        print(source.split('\n')[line])
-        print('-' * col + '^')
+class FSContext(Context):
+    def __init__(self, namespace_identifier: NamespaceIdentifier):
+        namespaces = {}
+        to_load = {namespace_identifier}
+        while to_load:
+            namespace_identifier = to_load.pop()
+            namespace = self._load_namespace(namespace_identifier)
+            namespaces[namespace_identifier] = namespace
+            for import_statement in namespace.import_statements:
+                if import_statement.identifier not in namespaces:
+                    to_load.add(import_statement.identifier)
+        super(FSContext, self).__init__(namespaces)
+
+    def _load_namespace(self, namespace_identifier: NamespaceIdentifier) -> Namespace:
+        logging.debug('Loading %s' % namespace_identifier)
+        with open('%s.lcalc' % namespace_identifier._value) as f:
+            source = f.read()
+            return parse_namespace(source)
 
 
-def evaluate(expr):
-    """
-    :rtype: Def
-    """
-    old = None
-    step = 0
-    LOGGER.info('Given: %s' % expr)
-    while expr != old:
-        old = expr
-        expr = expr.beta()
-        LOGGER.info('Step %d, beta -> %s' % (step, expr))
-        step += 1
-    LOGGER.info('Result: %s' % expr)
-    return expr
-
-
-ID = Abs('x', Val('x', 0))
+_RI_x = RelativeIdentifier('x')
+_RI_f = RelativeIdentifier('f')
+ID = Abs(_RI_x, Val(_RI_x, 0))
 
 
 class _ChurchNumerals(object):
-    ZERO = Abs('f', ID)
-    ONE = Abs('f', Abs('x', App(Val('f', 1), Val('x', 0))))
+    ZERO = Abs(_RI_f, ID)
+    ONE = Abs(_RI_f, Abs(_RI_x, App(Val(_RI_f, 1), Val(_RI_x, 0))))
 
     def __init__(self):
-        self._x = Val('x', 0)
-        self._f = Val('f', 1)
+        self._x = Val(_RI_x, 0)
+        self._f = Val(_RI_f, 1)
         self._cache = [self._x]
 
     def _cached(self, item):
@@ -481,17 +632,7 @@ class _ChurchNumerals(object):
         elif item == 1:
             return self.ONE
         else:
-            return Abs('f', Abs('x', self._cached(item)))
+            return Abs(_RI_f, Abs(_RI_x, self._cached(item)))
+
 
 church_numerals = _ChurchNumerals()
-
-
-__all__ = [
-    'Val',
-    'Abs',
-    'App',
-    'parse',
-    'try_parse',
-    'evaluate',
-    'church_numerals',
-]

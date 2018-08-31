@@ -4,3 +4,5 @@ venv
 *.eggs/
 __pycache__/
 .pypirc
+.DS_Store
+*.pyc

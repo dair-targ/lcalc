@@ -1,0 +1,3 @@
+import lib;
+
+main = lib/succ lib/succ 1;
