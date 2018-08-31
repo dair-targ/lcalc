@@ -1,1 +1,10 @@
-succ = λn.λf.λx.f (n f x);
+PRED = λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u);
+SUB = λm.λn.n PRED m;
+SUCC = λn.λf.λx.f (n f x);
+PLUS = λm.λn.m SUCC n;
+MULT = λm.λn.m (PLUS n) 0;
+FALSE = λx.λy.y;
+TRUE = λx.λy.x;
+ISZERO = λn.n (λx.FALSE) TRUE;
+IFTHENELSE = λp.λa.λb.p a b;
+G = λn.IFTHENELSE (ISZERO n) 1 (MULT n (G (SUB n 1)));

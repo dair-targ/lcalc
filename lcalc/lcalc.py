@@ -12,6 +12,8 @@ LOGGER.setLevel(logging.INFO)
 
 
 def log(fn):
+    if LOGGER.level > logging.DEBUG:
+        return fn
     def log_result(self, args, kwargs, result):
         LOGGER.debug('%s --%s.%s(%s)--> %s' % (
             self,
@@ -558,13 +560,13 @@ class Context(object):
         expr = self.get_def(absolute_identifier.namespace_identifier, absolute_identifier)
         old = None
         step = 0
-        LOGGER.info('Given: %s' % expr)
+        LOGGER.debug('Given: %s' % expr)
         while expr != old:
             old = expr
             expr = expr.beta(self)
-            LOGGER.info('Step %d, beta -> %s' % (step, expr))
+            LOGGER.debug('Step %d, beta -> %s' % (step, expr))
             step += 1
-        LOGGER.info('Result: %s' % expr)
+        LOGGER.debug('Result: %s' % expr)
         return expr
 
 

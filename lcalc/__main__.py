@@ -3,7 +3,7 @@ import lcalc
 
 def main():
     context = lcalc.FSContext(lcalc.NamespaceIdentifier('main'))
-    print(lcalc.run(context))
+    print(context.eval())
 
 
 if __name__ == '__main__':
