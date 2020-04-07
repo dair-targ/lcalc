@@ -31,7 +31,7 @@ class Context(object):
         old: typing.Optional[Def] = None
         while expr != old:
             old = expr
-            expr: Def = expr.beta(self)
+            expr = expr.beta(self)
         return expr
 
 
@@ -60,6 +60,6 @@ class FSContext(Context):
     def _load_namespace(self, namespace_identifier: NamespaceIdentifier) -> Namespace:
         logging.debug('Loading %s' % namespace_identifier)
         path = self._root_path / f'{namespace_identifier._value}.lcalc'
-        with open(path.absolute()) as f:
+        with open(str(path.absolute())) as f:
             source = f.read()
             return parse_namespace(source)

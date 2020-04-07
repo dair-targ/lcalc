@@ -43,11 +43,14 @@ class Namespace(object):
         for identifier in self._exprs.keys():
             self._exprs[identifier] = self._exprs[identifier].link(namespace_identifier)
 
+    def has_def(self, relative_identifier: RelativeIdentifier) -> bool:
+        return relative_identifier in self._exprs
+
     def get_def(self, relative_identifier: RelativeIdentifier) -> Def:
-        if relative_identifier not in self._exprs:
+        if not self.has_def(relative_identifier):
             raise Exception('"%s" is not defined. Defined identifiers are:\n%s' % (
                 relative_identifier,
-                ''.join('  %s\n' % n for n in self._exprs),
+                ''.join(f'  {n}\n' for n in self._exprs),
             ))
         return self._exprs[relative_identifier]
 
@@ -128,7 +131,7 @@ class Parser(object):
 
         return parser
 
-    def p_val(self, abss):
+    def p_val(self, abss) -> parsec.Parser:
         @parsec.generate
         def parser() -> Val:
             identifier = yield parsec.try_choice(self.absolute_identifier(), self.relative_identifier())
@@ -142,7 +145,7 @@ class Parser(object):
                     return LocalRef(identifier)
         return parser
 
-    def p_abs(self, abss):
+    def p_abs(self, abss) -> parsec.Parser:
         @parsec.generate
         def parser() -> Abs:
             yield parsec.try_choice(parsec.string('λ'), parsec.string('\\'))
