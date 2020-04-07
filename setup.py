@@ -14,7 +14,7 @@ setup(
     author_email='vladimir.berkutov@gmail.com',
     description='Lambda Calculus implementation',
 
-    requires=[
+    install_requires=[
         'parsec>=3.0',
     ],
 
