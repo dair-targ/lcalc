@@ -1,0 +1,21 @@
+0 = λf.λx.x;
+1 = λf.λx.f x;
+2 = SUCC 1;
+3 = SUCC 2;
+4 = SUCC 3;
+
+PRED = λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u);
+MINUS = λm.λn.n PRED m;
+SUCC = λn.λf.λx.f (n f x);
+PLUS = λm.λn.m SUCC n;
+MULT = λm.λn.m (PLUS n) 0;
+FALSE = λx.λy.y;
+TRUE = λx.λy.x;
+ISZERO = λn.n (λx.FALSE) TRUE;
+IFTHENELSE = λp.λa.λb.p a b;
+G = λn.IFTHENELSE (ISZERO n) 1 (MULT n (G (MINUS n 1)));
+
+DIVIDE = λn.DIVIDE1 (SUCC n);
+DIVIDE1 = Y DIV;
+DIV = λc.λn.λm.λf.λx.(λd.ISZERO d (0 f x) (f (c d m f x))) (MINUS n m);
+Y = λf.(λx.f (x x))(λx.f (x x));

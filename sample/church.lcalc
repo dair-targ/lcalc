@@ -1,0 +1,5 @@
+0 = λf.λx.x;
+1 = λf.λx.f x;
+2 = SUCC 1;
+3 = SUCC 2;
+4 = SUCC 3;

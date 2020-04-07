@@ -1,0 +1,4 @@
+import lib;
+
+{main = lib/G lib/4;}
+main = lib/DIVIDE lib/4 lib/2;

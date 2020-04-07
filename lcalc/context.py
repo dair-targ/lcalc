@@ -1,5 +1,6 @@
 import typing
 import logging
+import pathlib
 
 from .identifiers import NamespaceIdentifier, RelativeIdentifier, AbsoluteIdentifier
 from .model import Def
@@ -43,7 +44,8 @@ class DictContext(Context):
 
 
 class FSContext(Context):
-    def __init__(self, namespace_identifier: NamespaceIdentifier):
+    def __init__(self, namespace_identifier: NamespaceIdentifier, root_path: pathlib.Path = pathlib.Path('.')):
+        self._root_path = root_path
         namespaces = {}
         to_load = {namespace_identifier}
         while to_load:
@@ -57,6 +59,7 @@ class FSContext(Context):
 
     def _load_namespace(self, namespace_identifier: NamespaceIdentifier) -> Namespace:
         logging.debug('Loading %s' % namespace_identifier)
-        with open('%s.lcalc' % namespace_identifier._value) as f:
+        path = self._root_path / f'{namespace_identifier._value}.lcalc'
+        with open(path.absolute()) as f:
             source = f.read()
             return parse_namespace(source)
