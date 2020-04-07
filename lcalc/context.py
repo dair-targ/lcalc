@@ -26,12 +26,12 @@ class Context(object):
         namespace = self.get_namespace(absolute_identifier.namespace_identifier)
         return namespace.get_def(absolute_identifier.relative_identifier)
 
-    def eval(self, absolute_identifier: AbsoluteIdentifier=AbsoluteIdentifier(NamespaceIdentifier('main'), RelativeIdentifier('main'))):
+    def eval(self, absolute_identifier: AbsoluteIdentifier):
         expr = self.get_def(absolute_identifier)
         old: typing.Optional[Def] = None
         while expr != old:
             old = expr
-            expr = expr.beta(self)
+            expr: Def = expr.beta(self)
         return expr
 
 
