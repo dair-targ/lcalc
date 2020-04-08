@@ -3,11 +3,11 @@ from .identifiers import NamespaceIdentifier, AbsoluteIdentifier, RelativeIdenti
 
 
 class Def(object):
-    def __str__(self):
+    def __str__(self, comment: bool = True):
         raise NotImplementedError()
 
-    def __repr__(self):
-        return self.__str__()
+    def __repr__(self, comment: bool = True):
+        return self.__str__(comment=comment)
 
     def __eq__(self, other):
         raise NotImplementedError()
@@ -61,8 +61,8 @@ class GlobalRef(Def):
     def __init__(self, absolute_identifier: AbsoluteIdentifier):
         self._absolute_identifier = absolute_identifier
 
-    def __str__(self):
-        return '{absref}%s' % self._absolute_identifier
+    def __str__(self, comment: bool = True):
+        return f'{"{absref}" if comment else ""}{self._absolute_identifier}'
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self._absolute_identifier == other._absolute_identifier
@@ -87,8 +87,8 @@ class LocalRef(Def):
     def __init__(self, relative_identifier: RelativeIdentifier):
         self._relative_identifier = relative_identifier
 
-    def __str__(self):
-        return '{locref}%s' % self._relative_identifier
+    def __str__(self, comment: bool = True):
+        return f'{"{locref}" if comment else ""}{self._relative_identifier}'
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self._relative_identifier == other._relative_identifier
@@ -115,8 +115,8 @@ class Val(Def):
         self._identifier = identifier
         self._index = index
 
-    def __str__(self):
-        return '{<-%d}%s' % (self._index, self._identifier)
+    def __str__(self, comment: bool = True):
+        return f'{"{<-" + self._index + "}" if comment else ""}{self._identifier}'
 
     def __eq__(self, other):
         return isinstance(other, Val) and self._index == other._index
@@ -143,8 +143,8 @@ class Abs(Def):
         self._identifier: RelativeIdentifier = identifier
         self._body = body
 
-    def __str__(self):
-        return u'λ%s.%s' % (self._identifier, self._body)
+    def __str__(self, comment: bool = True):
+        return f'λ{self._identifier}.{self._body.__str__(comment=comment)}'
 
     def __eq__(self, other):
         return isinstance(other, Abs) and self._body == other._body
@@ -182,14 +182,14 @@ class App(Def):
         self._m = m
         self._n = n
 
-    def __str__(self):
-        sm = str(self._m)
+    def __str__(self, comment: bool = True):
+        sm = self._m.__str__(comment=comment)
         if isinstance(self._m, Abs):
             sm = '(' + sm + ')'
-        sn = str(self._n)
+        sn = self._n.__str__(comment=comment)
         if isinstance(self._n, App):
             sn = '(' + sn + ')'
-        return '%s %s' % (sm, sn)
+        return f'{sm} {sn}'
 
     def __eq__(self, other):
         return isinstance(other, App) and self._m == other._m and self._n == other._n

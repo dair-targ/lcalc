@@ -8,12 +8,17 @@ class RelativeIdentifier(Identifier):
 
     def __str__(self):
         return self._value
+    __repr__ = __str__
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self._value == other._value
 
     def __hash__(self):
         return hash(self._value)
+
+    @property
+    def value(self):
+        return self._value
 
 
 class NamespaceIdentifier(Identifier):
@@ -22,6 +27,7 @@ class NamespaceIdentifier(Identifier):
 
     def __str__(self):
         return self._value
+    __repr__ = __str__
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self._value == other._value
@@ -37,6 +43,7 @@ class AbsoluteIdentifier(Identifier):
 
     def __str__(self):
         return '%s/%s' % (repr(self._namespace_identifier), repr(self._relative_identifier))
+    __repr__ = __str__
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):

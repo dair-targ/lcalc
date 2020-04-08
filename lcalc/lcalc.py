@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 import typing
 
-import parsec
-import string
 import logging
 
-from .identifiers import Identifier, NamespaceIdentifier, RelativeIdentifier, AbsoluteIdentifier
+from .identifiers import NamespaceIdentifier, RelativeIdentifier, AbsoluteIdentifier
 from .context import Namespace
 from .model import Def, Abs, Val, App
-from .parser import parse_def, parse_namespace
+from .parser import parse_namespace, parse_def
 
 
 class Context(object):
@@ -28,12 +26,10 @@ class Context(object):
 
     def get_def(self, absolute_identifier: AbsoluteIdentifier) -> Def:
         namespace = self.get_namespace(absolute_identifier.namespace_identifier)
-        relative_identifier: RelativeIdentifier = absolute_identifier.relative_identifier
-        if relative_identifier._value.isdigit():
-            return church_numerals[int(relative_identifier._value)]
+        relative_identifier = absolute_identifier.relative_identifier
         return namespace.get_def(relative_identifier)
 
-    def eval(self, absolute_identifier: AbsoluteIdentifier=AbsoluteIdentifier(NamespaceIdentifier('main'), RelativeIdentifier('main'))):
+    def eval(self, absolute_identifier: AbsoluteIdentifier = AbsoluteIdentifier(NamespaceIdentifier('main'), RelativeIdentifier('main'))):
         expr = self.get_def(absolute_identifier)
         old: typing.Optional[Def] = None
         step = 0

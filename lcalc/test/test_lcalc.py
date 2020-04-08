@@ -158,6 +158,7 @@ class ProgramTest(unittest.TestCase):
 
     def test_numbers(self):
         c = lcalc.DictContext({'main': '''
+        1 = λf.λx.f x;
         SUCC = λn.λf.λx.f (n f x);
         main = SUCC 1;
         '''})
@@ -169,6 +170,10 @@ class ProgramTest(unittest.TestCase):
     #@unittest.skip('takes 50 seconds to complete')
     def test_recursion(self):
         c = lcalc.DictContext({'main': '''
+                0 = λf.λx.x;
+                1 = SUCC 0;
+                2 = SUCC 1;
+                3 = SUCC 2;
                 PRED = λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u);
                 SUB = λm.λn.n PRED m;
                 SUCC = λn.λf.λx.f (n f x);
@@ -195,6 +200,7 @@ class NamespaceTestCase(unittest.TestCase):
                 succ = λn.λf.λx.f (n f x);
                 ''',
             main='''import lib;
+            1 = λf.λx.f x;
             main = lib/succ 1;
             ''',
         ))
