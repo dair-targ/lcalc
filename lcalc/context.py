@@ -2,7 +2,7 @@ import typing
 import logging
 import pathlib
 
-from .identifiers import NamespaceIdentifier, RelativeIdentifier, AbsoluteIdentifier
+from .identifiers import NamespaceIdentifier, AbsoluteIdentifier
 from .model import Def
 from .parser import Namespace, parse_namespace
 
